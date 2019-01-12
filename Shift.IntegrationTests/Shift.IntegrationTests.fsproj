@@ -1,18 +1,16 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp2.2</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="InitTest.fsx" />
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="InitializationTests.fs" />
     <Compile Include="Program.fs" />
-    <ProjectReference Include="..\Shift\Shift.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="Script.fsx" />
+    <ProjectReference Include="..\Shift\Shift.fsproj" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>
