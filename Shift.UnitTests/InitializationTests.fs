@@ -1,4 +1,4 @@
-module Tests
+module Shift.UnitTests.InitializationTests
 
 open System
 open Xunit
