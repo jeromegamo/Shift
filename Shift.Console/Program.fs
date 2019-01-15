@@ -23,15 +23,33 @@ module Program =
         |> function
         | Error e -> e
         | Ok o -> 
+            let ( <!> ) = Result.map
+            let ( <*> ) = Result.apply
             match o with
             | Initialize migrationRepositoryName -> 
-                let ( <!> ) = Result.map
-                let ( <*> ) = Result.apply
                 initializeHandler <!> projectDirectory <*> (Ok migrationRepositoryName)
                 |> Result.bind id
                 |> function
                 | Error e -> e
                 | Ok o -> "Migration repository folder has been created"
+            | AddMigration migrationEntryName ->
+                let timestamp = DateTime.UtcNow
+                let migrationRepositoryDir = 
+                    DirectoryHelper.getMigrationRepositoryDir 
+                    <!> (Ok defaultMigrationRepositoryName)
+                    <*> projectDirectory
+
+                let migrationRepositoryDir' = 
+                    migrationRepositoryDir
+                    |> function
+                    | Error e -> Error e
+                    | Ok (None) -> Error "Migration repository does not exist"
+                    | Ok (Some repodir) -> Ok repodir
+
+                addMigrationHandler <!> (Ok timestamp) <*> migrationRepositoryDir' <*> (Ok migrationEntryName)
+                |> function
+                | Error e -> e
+                | Ok o -> sprintf "Migration entry created %A" o
             | _ -> failwith "Invalid operation"
             
 

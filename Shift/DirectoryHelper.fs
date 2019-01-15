@@ -18,5 +18,12 @@ module DirectoryHelper =
         fun name ->
         let dir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
         tryFindParent name dir
-
+        
+    let getMigrationRepositoryDir : MigrationRepositoryName -> ProjectDirectory -> MigrationRepositoryDirectory option =
+        fun repoName projectDir ->
+            let repositoryPath = Path.Combine(projectDir.FullPath, repoName)
+            if Directory.Exists repositoryPath 
+            then {DirInfo.Name = repoName
+                  FullPath = repositoryPath} |> Some
+            else None
 

@@ -3,7 +3,9 @@
 module CommandHandler =
 
     open System.IO
+    open Shift
     open Shift.Common
+    open Shift.MigrationRepository
 
     let getRepositoryDirInfo : ProjectDirectory 
                             -> MigrationRepositoryName 
@@ -27,3 +29,19 @@ module CommandHandler =
         if migrationRepositoryExists repoDir
         then Error "Migration repository already exists"
         else createRepository repoDir |> Ok
+
+    type AddMigrationHandlerError =
+        | MigrationIdError of MigrationId.MigrationIdError
+
+    let addMigrationHandler : TimeStamp
+                        -> MigrationRepositoryDirectory 
+                        -> MigrationEntryName 
+                        -> Result<unit, AddMigrationHandlerError> =
+        fun timestamp migrationRepositoryDirectory entryName -> 
+        let (<!>) = Result.map
+        let (<*>) = Result.apply
+        let migId = MigrationId.create timestamp entryName
+                    |> Result.mapError AddMigrationHandlerError.MigrationIdError
+        createMigrationEntry <!> (Ok migrationRepositoryDirectory) <*> migId
+
+            
