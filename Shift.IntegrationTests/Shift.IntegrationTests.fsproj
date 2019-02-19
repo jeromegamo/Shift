@@ -6,12 +6,17 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="TestHelpers.fs" />
+    <Compile Include="MigrationRepositoryTests.fs" />
+    <Compile Include="RemoveMigrationTests.fs" />
+    <Compile Include="UpdateDatabaseTests.fs" />
     <Compile Include="AddMigrationTests.fs" />
     <Compile Include="InitializationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shift\Shift.fsproj" />
+    <ProjectReference Include="..\Shift.Console\Shift.Console.fsproj" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

@@ -10,23 +10,7 @@ open Shift.DirectoryHelper
 open Shift.CommandHandler
 open Shift
 open Swensen.Unquote
-
-let getProjectName : unit -> ProjectDirectoryName =
-    fun () -> Assembly.GetExecutingAssembly().GetName().Name
-
-let appendTempFolder : ProjectDirectory -> ProjectDirectory =
-    fun dir -> 
-    let tempName = "Temp"
-    let tempDir = { ProjectDirectory.Name = tempName
-                    FullPath = Path.Combine(dir.FullPath, tempName) }
-    Directory.CreateDirectory tempDir.FullPath |> ignore
-    tempDir
-
-let appendMigrationRepoDir : MigrationRepositoryName -> ProjectDirectory -> ProjectDirectory =
-    fun repoName dir -> 
-    { ProjectDirectory.Name = repoName
-      FullPath = Path.Combine(dir.FullPath, repoName) }
-
+open Shift.IntegrationTests.TestHelpers
 
 let ( <!> ) = Option.map
 let ( <*> ) = Option.apply

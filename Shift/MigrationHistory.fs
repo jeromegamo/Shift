@@ -20,3 +20,19 @@ module MigrationHistory =
                                 constraint PK_MigrationId primary key (MigrationId)
                           )"
         executeNonQuery cmd rawScript |> ignore
+
+    let isMigrationApplied : IDbCommand -> MigrationId -> bool =
+        fun cmd mId ->
+        let rawScript = sprintf "select case when exists (
+                                        select *
+                                        from [ShiftMigrationHistory]
+                                        where MigrationId = '%s'
+                                    )
+                                    then 'true'
+                                    else 'false' end" <| mId.ToString()
+        cmd.CommandText <- rawScript
+        executeScalar<string> cmd
+        |> function
+        | Some "true" -> true
+        | Some "false" -> false
+        | _ -> false 

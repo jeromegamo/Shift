@@ -3,3 +3,6 @@ xunit
 xunit.runner.visualstudio
 FSharp.Core
 Unquote
+Microsoft.Extensions.Configuration
+Microsoft.Extensions.Configuration.FileExtensions
+Microsoft.Extensions.Configuration.Json

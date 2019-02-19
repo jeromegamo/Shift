@@ -4,6 +4,7 @@ module DirectoryHelper =
 
     open System
     open System.IO
+    open System.Reflection
     open Shift.Common
 
     let rec private tryFindParent (name:string) (dir:DirectoryInfo) =
@@ -27,3 +28,5 @@ module DirectoryHelper =
                   FullPath = repositoryPath} |> Some
             else None
 
+    let getProjectName : unit -> ProjectDirectoryName =
+        fun () -> Assembly.GetCallingAssembly().GetName().Name

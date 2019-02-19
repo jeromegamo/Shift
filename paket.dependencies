@@ -6,3 +6,7 @@ nuget Microsoft.NET.Test.Sdk 15.9.0
 nuget xunit 2.4.0
 nuget xunit.runner.visualstudio 2.4.0
 nuget Unquote
+nuget System.Data.SqlClient
+nuget Microsoft.Extensions.Configuration
+nuget Microsoft.Extensions.Configuration.FileExtensions
+nuget Microsoft.Extensions.Configuration.Json

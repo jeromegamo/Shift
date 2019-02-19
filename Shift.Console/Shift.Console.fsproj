@@ -8,6 +8,7 @@
     <Compile Remove="InitTest.fsx" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="UpdateHandler.fs" />
     <Compile Include="Program.fs" />
     <ProjectReference Include="..\Shift\Shift.fsproj" />
   </ItemGroup>

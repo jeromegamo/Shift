@@ -9,22 +9,7 @@ open Shift
 open Shift.Common
 open Shift.CommandHandler
 open Shift.DirectoryHelper
-
-let getProjectName : unit -> ProjectDirectoryName =
-    fun () -> Assembly.GetExecutingAssembly().GetName().Name
-
-let appendTempFolder : ProjectDirectory -> ProjectDirectory =
-    fun dir -> 
-    let tempName = "Temp"
-    let tempDir = { ProjectDirectory.Name = tempName
-                    FullPath = Path.Combine(dir.FullPath, tempName) }
-    Directory.CreateDirectory tempDir.FullPath |> ignore
-    tempDir
-
-let appendMigrationRepoDir : MigrationRepositoryName -> ProjectDirectory -> ProjectDirectory =
-    fun repoName dir -> 
-    { ProjectDirectory.Name = repoName
-      FullPath = Path.Combine(dir.FullPath, repoName) }
+open Shift.IntegrationTests.TestHelpers
 
 let Ok' : unit -> Result<unit, AddMigrationHandlerError> = Ok
 let Error' : AddMigrationHandlerError -> Result<unit, AddMigrationHandlerError> = Error

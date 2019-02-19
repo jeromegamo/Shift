@@ -6,8 +6,10 @@
   <ItemGroup>
     <Compile Include="LanguageExtensions.fs" />
     <Compile Include="Common.fs" />
+    <Compile Include="Db.fs" />
     <Compile Include="MigrationId.fs" />
     <Compile Include="DirectoryHelper.fs" />
+    <Compile Include="MigrationHistory.fs" />
     <Compile Include="MigrationRepository.fs" />
     <Compile Include="CommandHandler.fs" />
     <Compile Include="CommandParser.fs" />

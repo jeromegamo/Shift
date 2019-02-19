@@ -6,6 +6,8 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="UpdateDatabaseTests.fs" />
+    <Compile Include="UpdateCommandParserTests.fs" />
     <Compile Include="AddMigrationTests.fs" />
     <Compile Include="InitializationTests.fs" />
     <Compile Include="Program.fs" />
