@@ -3,39 +3,37 @@
 open System
 open Shift.Common
 
+type RawCommand = string
+type ParsingError = string
+type ParsedCommand =
+    | InitCommand
+    | AddCommand of name: MigrationEntryName
+    | UpdateCommand of name : MigrationEntryName option
+    | RemoveCommand
+
 module CommandParser =
 
     open System.Text.RegularExpressions
 
-    type RawCommand = string
-
-    type ParsedCommand =
-        | Initialize of name: MigrationRepositoryName
-        | AddMigration of name: MigrationEntryName
-        | UpdateDatabase of name : MigrationEntryName option
-        | RemoveMigration
-
-    type CommandError = string
-
-    let initPattern = 
+    let private initPattern = 
         Regex("^init$", RegexOptions.Compiled)
-    let addPattern = 
+    let private addPattern = 
         Regex("^add[ ]*(?<name>[a-zA-Z0-9]+)$", RegexOptions.Compiled)
-    let updatePattern = 
+    let private updatePattern = 
         Regex("^update[ ]*(?<name>[a-zA-Z0-9]*)$", RegexOptions.Compiled)
     let private removePattern = 
         Regex("^remove$", RegexOptions.Compiled)
 
-    let (|ParseInit|_|) rawCmd = 
+    let private (|InitParser|_|) rawCmd = 
         if initPattern.IsMatch rawCmd then Some() else None
 
-    let (|ParseAdd|_|) rawCmd =
+    let private (|AddParser|_|) rawCmd =
         let m = addPattern.Match rawCmd
         if m.Success 
         then (m.Groups.["name"].Value).Trim() |> Some
         else None
 
-    let private (|ParseUpdate|_|) rawCmd = 
+    let private (|UpdateParser|_|) rawCmd = 
         let m = updatePattern.Match rawCmd
         if m.Success then 
             let name = m.Groups.["name"].Value
@@ -43,13 +41,13 @@ module CommandParser =
             else Some(Some(name))
         else None
 
-    let (|ParseRemove|_|) raw = if removePattern.IsMatch raw then Some() else None
+    let private (|RemoveParser|_|) raw = if removePattern.IsMatch raw then Some() else None
 
-    let parseCommand : MigrationRepositoryName -> RawCommand -> Result<ParsedCommand, CommandError> =
-        fun migrationRepoName rawCmd -> 
+    let parseCommand : RawCommand -> Result<ParsedCommand, ParsingError> =
+        fun rawCmd -> 
         match rawCmd.Trim() with
-        | ParseInit -> Ok (Initialize migrationRepoName)
-        | ParseAdd migrationEntryName -> Ok (AddMigration migrationEntryName)
-        | ParseUpdate migrationEntryName -> Ok (UpdateDatabase migrationEntryName)
-        | ParseRemove -> Ok(RemoveMigration)
+        | InitParser -> Ok (InitCommand)
+        | AddParser migrationEntryName -> Ok (AddCommand migrationEntryName)
+        | UpdateParser migrationEntryName -> Ok (UpdateCommand migrationEntryName)
+        | RemoveParser -> Ok(RemoveCommand)
         | _ -> Error "Invalid command"

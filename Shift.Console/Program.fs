@@ -81,10 +81,10 @@ module Program =
     let parsedCommandHandler : ProjectDirectory -> MigrationRepositoryDirectory option -> ParsedCommand -> Result<string,string> = 
         fun projectDirectory migrationRepositoryDirectory cmd -> 
         match cmd with
-        | Initialize migrationRepositoryName -> initializeHandler' projectDirectory migrationRepositoryDirectory migrationRepositoryName
-        | AddMigration migrationEntryName -> addMigrationHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
-        | ParsedCommand.UpdateDatabase migrationEntryName -> updateCommandHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
-        | RemoveMigration ->
+        | InitCommand -> initializeHandler' projectDirectory migrationRepositoryDirectory "ShiftMigrations"
+        | AddCommand migrationEntryName -> addMigrationHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
+        | UpdateCommand migrationEntryName -> updateCommandHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
+        | RemoveCommand ->
             let (<!>) = Result.map
             let (<*>) = Result.apply
             let connectionString = Common.getConnectionString projectDirectory
@@ -102,7 +102,7 @@ module Program =
         let (<*>) = Result.apply
         let migrationRepositoryDir = getMigrationRepositoryDir <!> (Ok migrationRepositoryName) <*> projectDirectory'
         let parsedCommandHandler' cmd = parsedCommandHandler <!> projectDirectory' <*> migrationRepositoryDir <*> (Ok cmd)
-        CommandParser.parseCommand migrationRepositoryName rawcmd
+        CommandParser.parseCommand rawcmd
         |> Result.bind parsedCommandHandler'
         |> Result.bind id 
         |> (printfn "%A")
