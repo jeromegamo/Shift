@@ -13,6 +13,7 @@
     <Compile Include="MigrationRepository.fs" />
     <Compile Include="CommandHandler.fs" />
     <Compile Include="CommandParser.fs" />
+    <Compile Include="Command.fs" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

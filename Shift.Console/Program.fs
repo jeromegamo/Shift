@@ -78,41 +78,28 @@ module Program =
                     else MigrationRepository.deleteById migrationRepositoryDirectory mId
                          Ok "Migration entry removed"
 
-    let parsedCommandHandler : ProjectDirectory -> MigrationRepositoryDirectory option -> ParsedCommand -> Result<string,string> = 
-        fun projectDirectory migrationRepositoryDirectory cmd -> 
-        match cmd with
-        | InitCommand -> initializeHandler' projectDirectory migrationRepositoryDirectory "ShiftMigrations"
-        | AddCommand migrationEntryName -> addMigrationHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
-        | UpdateCommand migrationEntryName -> updateCommandHandler' projectDirectory migrationRepositoryDirectory migrationEntryName
-        | RemoveCommand ->
-            let (<!>) = Result.map
-            let (<*>) = Result.apply
-            let connectionString = Common.getConnectionString projectDirectory
-                                   |> Option.asResult "Cannot find connection string"
-            removeMigrationHandler <!> connectionString <*> (Ok projectDirectory) <*> (Ok migrationRepositoryDirectory)
-            |> Result.bind id
-
-    //Todo: rename to parseCommand
-    //Todo: add another layer to validate if the command is not an init command of migration directory   
-    let executeCommand : ProjectDirectory option -> MigrationRepositoryName -> RawCommand -> unit =
-        fun projectDirectory migrationRepositoryName rawcmd -> 
-        let projectDirectory' = projectDirectory 
-                                |> Option.asResult "Project folder not found"
+    let run = 
         let (<!>) = Result.map
         let (<*>) = Result.apply
-        let migrationRepositoryDir = getMigrationRepositoryDir <!> (Ok migrationRepositoryName) <*> projectDirectory'
-        let parsedCommandHandler' cmd = parsedCommandHandler <!> projectDirectory' <*> migrationRepositoryDir <*> (Ok cmd)
-        CommandParser.parseCommand rawcmd
-        |> Result.bind parsedCommandHandler'
-        |> Result.bind id 
-        |> (printfn "%A")
-
-    let run () =
         let migrationRepositoryName = "ShiftMigrations"
         let name = DirectoryHelper.getProjectName()
         let projectDirectory = DirectoryHelper.getProjectDirectory name
-        Console.ReadLine()
-        |> executeCommand projectDirectory migrationRepositoryName
+                            |> Option.asResult "Project directory does not exist"
+        let parsedCommand = Console.ReadLine()
+                            |> CommandParser.parseCommand
+        let migrationRepositoryState = getMigrationRepositoryState 
+                                    <!> (Ok Directory.Exists) 
+                                    <*> (Ok migrationRepositoryName)
+                                    <*> projectDirectory
+        let result = processCommand 
+                    <!> (Ok initializeMigration)
+                    <*> migrationRepositoryState 
+                    <*> parsedCommand
+                    |> Result.bind id
+
+        match result with
+        | Error e -> printfn "%A" e
+        | Ok o -> printfn "%A" o
 
     [<EntryPoint>]
     let main argv =

@@ -102,3 +102,18 @@ module MigrationRepository =
         fun dir mId ->
         let dirToDelete = Path.Combine(dir.FullPath, mId.ToString())
         Directory.Delete(dirToDelete,true) |> ignore
+
+    type IsDirectoryExists = string -> bool
+
+    type MigrationRepositoryState =
+        | Exist of MigrationRepositoryDirectory
+        | DoesNotExist of MigrationRepositoryDirectory
+
+    let getMigrationRepositoryState : IsDirectoryExists -> MigrationRepositoryName -> ProjectDirectory -> MigrationRepositoryState =
+        fun isDirectoryExists repositoryName projectDirectory ->
+        let repositoryPath = Path.Combine(projectDirectory.FullPath, repositoryName)
+        let dir = { Name = repositoryName
+                    FullPath = repositoryPath } 
+        if isDirectoryExists dir.FullPath 
+        then Exist dir
+        else DoesNotExist dir
