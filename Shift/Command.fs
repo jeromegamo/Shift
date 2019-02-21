@@ -73,16 +73,6 @@ module Command =
         | Some history, Some migration, _  when history > migration -> Some()
         | _ -> None
 
-    type MigrationHistoryDeps = 
-        { ensureHistoryTable :  IDbCommand -> unit 
-          tryFindLatest : IDbCommand -> MigrationId option }
-    type MigrationRepositoryDeps =
-        { tryFindByName : MigrationRepositoryDirectory -> MigrationEntryName ->  MigrationId option 
-          tryFindLatest : MigrationRepositoryDirectory -> MigrationId option 
-          getMigrationFiles : MigrationRepositoryDirectory -> DbUpdateAction -> MigrationFile seq }
-    type UpdateDatabase = MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string>
-    type ExecuteMigrationScripts = IDbCommand -> MigrationFile seq -> unit
-
     let private getDbUpdateAction : LatestIdFromHistory -> LatestIdFromRepository -> TargetMigrationId -> Result<DbUpdateAction, string> =
         fun latestIdFromHistory latestIdFromRepository targetMigrationId ->
         match latestIdFromHistory, latestIdFromRepository, targetMigrationId with
@@ -93,6 +83,16 @@ module Command =
         | MigrationEntriesAreMissing -> Error "Migration entries are missing"
         | _ -> invalidArg "Update Database" (sprintf "Latest id from history: %A, Latest id from repository: %A, Target migration id: %A" 
                                                     latestIdFromHistory latestIdFromRepository targetMigrationId)
+
+    type MigrationHistoryDeps = 
+        { ensureHistoryTable :  IDbCommand -> unit 
+          tryFindLatest : IDbCommand -> MigrationId option }
+    type MigrationRepositoryDeps =
+        { tryFindByName : MigrationRepositoryDirectory -> MigrationEntryName ->  MigrationId option 
+          tryFindLatest : MigrationRepositoryDirectory -> MigrationId option 
+          getMigrationFiles : MigrationRepositoryDirectory -> DbUpdateAction -> MigrationFile seq }
+    type UpdateDatabase = MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string>
+    type ExecuteMigrationScripts = IDbCommand -> MigrationFile seq -> unit
 
     let updateDatabase : IDbCommand 
                       -> MigrationHistoryDeps
@@ -116,20 +116,47 @@ module Command =
         |> Result.map (executeMigrationScripts dbCommand)
         |> Result.map (fun _ -> "Database is successfully updated")
 
-    let processCommand : InitializeMigration 
-                      -> AddMigration
-                      -> UpdateDatabase
+    type TryFindLatestIdFromRepository = MigrationRepositoryDirectory -> MigrationId option
+    type IsMigrationApplied = MigrationId -> bool
+    type DeleteMigrationFileById = MigrationRepositoryDirectory -> MigrationId -> unit
+    type RemoveMigration = MigrationRepositoryDirectory -> Result<string, string>
+
+    let remove : TryFindLatestIdFromRepository 
+              -> IsMigrationApplied
+              -> DeleteMigrationFileById
+              -> RemoveMigration =
+        fun tryFindLatestIdFromRepository isMigrationApplied deleteMigrationFileById migrationRepositoryDirectory -> 
+        let (<!>) = Result.map
+        let (<*>) = Result.apply
+        let latestIdFromRepository = tryFindLatestIdFromRepository migrationRepositoryDirectory
+                                    |> Option.asResult "No migration entries exists"
+        let deleteMigrationFile = fun isApplied ->
+            if isApplied then Error "Migration entry is currently applied."
+            else deleteMigrationFileById 
+                <!> Ok migrationRepositoryDirectory 
+                <*> latestIdFromRepository
+
+        isMigrationApplied <!> latestIdFromRepository
+        |> Result.bind deleteMigrationFile
+        |> Result.map (fun _ -> "Migration entry successfully deleted")
+
+    type ProcessCommandDeps = { initializeMigration : InitializeMigration
+                                addMigration : AddMigration
+                                updateDatabase : UpdateDatabase
+                                removeMigration : RemoveMigration }
+
+    let processCommand : ProcessCommandDeps
                       -> MigrationRepositoryState 
                       -> ParsedCommand
                       -> Result<string, string> =
-        fun initializeMigration addMigration updateDatabase migrationRepositoryState parsedCommand ->
+        fun command migrationRepositoryState parsedCommand ->
         match parsedCommand, migrationRepositoryState with 
         | InitCommand, Exist _ -> Error "A repository already exists"
-        | InitCommand, DoesNotExist repository -> initializeMigration repository
+        | InitCommand, DoesNotExist repository -> command.initializeMigration repository
         | _, DoesNotExist _ -> Error "Migration repository does not exist"
         | _, Exist repository ->
             match parsedCommand with
-            | AddCommand entryName -> addMigration repository entryName
-            | UpdateCommand entryName -> updateDatabase repository entryName
-            | RemoveCommand -> Ok ""
+            | AddCommand entryName -> command.addMigration repository entryName
+            | UpdateCommand entryName -> command.updateDatabase repository entryName
+            | RemoveCommand -> command.removeMigration repository
             | _ -> failwith "Command cannot be processed"
