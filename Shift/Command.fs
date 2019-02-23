@@ -35,6 +35,9 @@ module Command =
     type private LatestIdFromHistory = MigrationId option
     type private LatestIdFromRepository = MigrationId option
     type private TargetMigrationId = MigrationId option
+    type DbScriptAction =
+        | InsertIds 
+        | DeleteIds 
     type DbUpdateAction = 
         | Update of from: MigrationId * upto: MigrationId
         | Revert of from: MigrationId * upto: MigrationId
@@ -84,36 +87,82 @@ module Command =
         | _ -> invalidArg "Update Database" (sprintf "Latest id from history: %A, Latest id from repository: %A, Target migration id: %A" 
                                                     latestIdFromHistory latestIdFromRepository targetMigrationId)
 
+    let private readFile : MigrationFile -> string =
+        fun file ->
+        File.ReadAllText(file.File)
+
+    let private reducer accumulator current =
+        accumulator + System.Environment.NewLine + current
+
+    let private createHistoryInsertionScript : MigrationFile seq -> string =
+        fun files ->
+        let init = @"insert into ShiftMigrationHistory(MigrationId)" + System.Environment.NewLine + "values "
+        let values = files |> Seq.map (fun migration -> sprintf "('%s')" (migration.Id.ToString()))
+                           |> String.concat ","
+        init + values
+
+    let private createHistoryDeletionScript : MigrationFile seq -> string =
+        fun files ->
+        let getIdAsString = (fun migration -> sprintf "'%s'" (migration.Id.ToString()))
+        let ids = files |> Seq.map getIdAsString
+                        |> String.concat ","
+        @"delete from ShiftMigrationHistory" + System.Environment.NewLine + 
+          (sprintf "where MigrationId in (%s);" ids)
+
+    let private mergeScripts : MigrationFile seq * DbScriptAction -> string =
+        fun (files, action) -> 
+        let migrationScript = files 
+                              |> Seq.map readFile
+                              |> Seq.reduce reducer
+        let actionScript = 
+            match action with
+            | InsertIds -> createHistoryInsertionScript files
+            | DeleteIds -> createHistoryDeletionScript files
+        migrationScript + System.Environment.NewLine + actionScript
+
+    let executeMigrationScripts : IDbCommand -> MigrationFile seq * DbScriptAction -> unit =
+        fun cmd (files, action) ->
+        let script = mergeScripts (files, action)
+        cmd.CommandText <- script
+        cmd.ExecuteNonQuery() |> ignore
+
     type MigrationHistoryDeps = 
-        { ensureHistoryTable :  IDbCommand -> unit 
-          tryFindLatest : IDbCommand -> MigrationId option }
+        { ensureHistoryTable : unit -> unit 
+          tryFindLatest : unit -> MigrationId option }
     type MigrationRepositoryDeps =
         { tryFindByName : MigrationRepositoryDirectory -> MigrationEntryName ->  MigrationId option 
           tryFindLatest : MigrationRepositoryDirectory -> MigrationId option 
-          getMigrationFiles : MigrationRepositoryDirectory -> DbUpdateAction -> MigrationFile seq }
+          getUpFilesByRange :  MigrationRepositoryDirectory -> MigrationId -> MigrationId -> MigrationFile seq
+          getDownFilesByRange : MigrationRepositoryDirectory -> MigrationId -> MigrationId -> MigrationFile seq
+          getUpFilesUntil : MigrationRepositoryDirectory -> MigrationId -> MigrationFile seq }
     type UpdateDatabase = MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string>
-    type ExecuteMigrationScripts = IDbCommand -> MigrationFile seq -> unit
+    type ExecuteMigrationScripts = MigrationFile seq * DbScriptAction -> unit
+    type GetMigrationFiles = MigrationRepositoryDirectory -> DbUpdateAction -> MigrationFile seq 
 
-    let updateDatabase : IDbCommand 
-                      -> MigrationHistoryDeps
+    let updateDatabase : MigrationHistoryDeps
                       -> MigrationRepositoryDeps
                       -> ExecuteMigrationScripts 
                       -> UpdateDatabase =
-        fun dbCommand migrationHistory migrationRepository executeMigrationScripts migrationRepositoryDirectory entryName -> 
+        fun migrationHistory migrationRepository executeMigrationScripts migrationRepositoryDirectory entryName -> 
         let (<!>) = Option.map
         let (<*>) = Option.apply
-        do migrationHistory.ensureHistoryTable dbCommand
-
-        let latestIdFromHistory = migrationHistory.tryFindLatest dbCommand
+        do migrationHistory.ensureHistoryTable()
+        let latestIdFromHistory = migrationHistory.tryFindLatest()
         let latestIdFromRepository = migrationRepository.tryFindLatest migrationRepositoryDirectory
         let targetMigrationId = migrationRepository.tryFindByName 
                                 <!> Some migrationRepositoryDirectory 
                                 <*> entryName
                                 |> Option.bind id
 
+        let getMigrationFiles (cmd:DbUpdateAction) = 
+            match cmd with
+            | (Update(from, upto)) -> (migrationRepository.getUpFilesByRange migrationRepositoryDirectory from upto, InsertIds)
+            | (Revert(from, upto)) -> (migrationRepository.getDownFilesByRange migrationRepositoryDirectory upto from, DeleteIds)
+            | (UpdateFromFirst(target)) -> (migrationRepository.getUpFilesUntil migrationRepositoryDirectory target, InsertIds)
+
         getDbUpdateAction latestIdFromHistory latestIdFromRepository targetMigrationId 
-        |> Result.map (migrationRepository.getMigrationFiles migrationRepositoryDirectory)
-        |> Result.map (executeMigrationScripts dbCommand)
+        |> Result.map getMigrationFiles
+        |> Result.map (executeMigrationScripts)
         |> Result.map (fun _ -> "Database is successfully updated")
 
     type TryFindLatestIdFromRepository = MigrationRepositoryDirectory -> MigrationId option

@@ -43,3 +43,12 @@ values ('Weapon'),('Armor'),('Consumable')
 
 insert into Player(Name)
 values ('Legolas123'),('Kirito'),('Rimuru Tempest')
+
+insert into ShiftMigrationHistory(MigrationId)
+values ('20180101060000-CreatePlayer'),
+       ('20180101070000-CreateItems'),
+       ('20180101080000-CreateInventory'),
+       ('20180101090000-AddPlayerStatus'),
+       ('20180101100000-SeedItemCategory'),
+       ('20180101110000-SeedPlayer')
+

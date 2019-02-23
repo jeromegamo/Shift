@@ -15,7 +15,7 @@ module MigrationRepository =
     type MigrationFile =
         { Id:MigrationId
           File: string }
-
+          
     let private createMigrationEntryFiles : MigrationEntry -> unit =
         fun entry ->
         let createFile name =

@@ -42,14 +42,15 @@ module MigrationId =
 
     let create : TimeStamp -> Name -> Result<MigrationId, MigrationIdError> =
         fun timestamp name ->
-            let name = name.Trim()
-            match name with
-            | n when n |> String.length = 0 -> Error  Required
-            | n when n |> String.length < 4 -> Error MinLength
-            | n when n |> String.length > 100 -> Error MaxLength
-            | n -> Ok {name=name; timestamp= timestamp }
+        let name = name.Trim()
+        match name with
+        | n when n |> String.length = 0 -> Error  Required
+        | n when n |> String.length < 4 -> Error MinLength
+        | n when n |> String.length > 100 -> Error MaxLength
+        | n -> Ok {name=name; timestamp= timestamp }
 
-    let parse value = 
+    let parse : string -> MigrationId option =
+        fun value -> 
         let toDateTime value = DateTime.ParseExact(value, DateTimeStringFormat, null)
         let m = MigrationIdPattern.Match value
         if m.Success then Some { name = m.Groups.["name"].Value;

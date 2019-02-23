@@ -2,6 +2,7 @@ namespace Shift
 
 open System.Data
 open System.Data.SqlClient
+open Shift
 
 [<AutoOpen>]
 module Db =

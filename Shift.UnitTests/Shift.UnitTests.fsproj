@@ -7,9 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="UpdateDatabaseTests.fs" />
-    <Compile Include="UpdateCommandParserTests.fs" />
-    <Compile Include="AddMigrationTests.fs" />
-    <Compile Include="InitializationTests.fs" />
+    <Compile Include="MigrationIdTests.fs" />
+    <Compile Include="CommandParserTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

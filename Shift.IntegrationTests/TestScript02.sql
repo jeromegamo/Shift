@@ -29,3 +29,8 @@ create table Inventory(
     constraint FK_Item_Inventory foreign key (ItemId)
     references Item(Id)
 )
+
+insert into ShiftMigrationHistory(MigrationId)
+values ('20180101060000-CreatePlayer'),
+       ('20180101070000-CreateItems'),
+       ('20180101080000-CreateInventory')
