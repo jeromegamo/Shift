@@ -89,7 +89,7 @@ module MigrationRepository =
         |> Seq.sortByDescending id
         |> Seq.tryHead
 
-    let tryFindByName : MigrationRepositoryDirectory -> string -> MigrationId option =
+    let tryFindByName : MigrationRepositoryDirectory -> MigrationEntryName -> MigrationId option =
         fun dir name ->
         let repo = DirectoryInfo dir.FullPath
         repo.EnumerateDirectories()

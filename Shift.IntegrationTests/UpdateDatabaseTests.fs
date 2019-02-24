@@ -8,41 +8,13 @@ open Xunit
 open Swensen.Unquote
 open Shift
 open Shift.Command
+open Shift.IntegrationTests.TestHelpers
 
 let Ok' o : Result<string, string> = Ok o
 let Error' e : Result<string, string> = Error e
 
-type GetDbTransaction = SqlConnection -> SqlTransaction option
-let executeDbScript : ConnectionString -> GetDbTransaction -> (SqlCommand -> 'r) -> 'r =
-    fun connectionString getTransaction execute ->
-    use connection = new SqlConnection(connectionString)
-    connection.Open()
-    let tx = getTransaction connection
-    let cmd = connection.CreateCommand()
-    match tx with
-    | None ->
-        try execute cmd 
-        with _ -> reraise()
-    | Some tx ->
-        cmd.Transaction <- tx
-        try
-            let result = execute cmd
-            tx.Commit()
-            connection.Close()
-            result
-        with _ -> 
-            tx.Rollback()
-            connection.Close()
-            reraise()
-
 let (<!>) = Result.map
 let (<*>) = Result.apply
-
-let dbSetup dbName (dbcom:IDbCommand) =
-    TestHelpers.dropDatabase dbName dbcom
-    TestHelpers.createDatabase dbName dbcom
-    TestHelpers.useDatabase dbName dbcom
-    TestHelpers.createMigrationHistoryTable dbcom
 
 type FileName = string
 let readScriptFile : ProjectDirectory -> FileName -> IDbCommand -> unit = 
@@ -53,52 +25,26 @@ let readScriptFile : ProjectDirectory -> FileName -> IDbCommand -> unit =
                             dbcmd.CommandText <- script
                             dbcmd.ExecuteNonQuery() |> ignore)
 
-type DbName = string
-let testUpdateDb : (ConnectionString -> ProjectDirectory -> unit) 
-                -> DbName 
-                -> MigrationRepositoryName 
-                -> MigrationEntryName option 
-                -> (Result<ConnectionString, string> * Result<string, string>) =
-    fun executeBefore dbName migrationRepoName migrationEntryName ->
-    let name = DirectoryHelper.getProjectName()
-    let projectDirectory = DirectoryHelper.getProjectDirectory name 
-                            |> Option.asResult "No project directory"
-    let getConnectionString' dir =
-        getConnectionString dir |> function None -> Error "No connection string" | Some conn -> Ok conn
-    let connectionString = projectDirectory 
-                            |> Result.bind getConnectionString'
+let updateDatabase : MigrationEntryName option -> DirectoryDependencies -> IDbCommand -> Result<string, string> =
+    fun migrationEntryName dir dbcmd -> 
+    let historyDeps = 
+        { ensureHistoryTable = fun _ -> MigrationHistory.ensureMigrationHistoryTable dbcmd
+          tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
+    let repositoryDeps =
+            { tryFindByName = MigrationRepository.tryFindByName 
+              tryFindLatest = MigrationRepository.tryFindLatest
+              getUpFilesByRange = MigrationRepository.getUpFilesByRange
+              getDownFilesByRange = MigrationRepository.getDownFilesByRange
+              getUpFilesUntil = MigrationRepository.getUpFilesUntil }
 
-    let targetDbConnString = connectionString |> Result.map (TestHelpers.replaceDbName dbName)
+    let executeMigrationScripts = Command.executeMigrationScripts dbcmd
 
-    let updateDb dbcmd = 
-        let historyDeps = 
-            { ensureHistoryTable = fun _ -> MigrationHistory.ensureMigrationHistoryTable dbcmd
-              tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
-        let repositoryDeps =
-                { tryFindByName = MigrationRepository.tryFindByName 
-                  tryFindLatest = MigrationRepository.tryFindLatest
-                  getUpFilesByRange = MigrationRepository.getUpFilesByRange
-                  getDownFilesByRange = MigrationRepository.getDownFilesByRange
-                  getUpFilesUntil = MigrationRepository.getUpFilesUntil }
-
-        let executeMigrationScripts = Command.executeMigrationScripts dbcmd
-
-        let migrationRepositoryDirectory = projectDirectory |> Result.map (TestHelpers.appendMigrationRepoDir migrationRepoName)
-
-        Command.updateDatabase 
-            <!> (Ok historyDeps) 
-            <*> (Ok repositoryDeps) 
-            <*> (Ok executeMigrationScripts) 
-            <*> migrationRepositoryDirectory 
-            <*> Ok (migrationEntryName)
-            |> Result.bind id
-
-    executeDbScript <!> connectionString <*> Ok (fun _ -> None ) <*> Ok (dbSetup dbName) |> ignore
-    executeBefore <!> targetDbConnString <*> projectDirectory |> ignore 
-    let result = executeDbScript <!> targetDbConnString <*> Ok (fun conn -> Some (conn.BeginTransaction())) <*> Ok updateDb
-                 |> Result.bind id
-
-    (targetDbConnString, result)
+    Command.updateDatabase 
+        historyDeps
+        repositoryDeps
+        executeMigrationScripts
+        dir.migrationRepositoryDirectory
+        migrationEntryName
 
 [<Fact>]
 let ``Should apply all migration entries to the database`` () = 
@@ -106,14 +52,17 @@ let ``Should apply all migration entries to the database`` () =
     let migrationRepoName = "DummyShiftMigrations"
     let migrationEntryName = None
 
-    let (targetDbConnString, actual) = testUpdateDb (fun _ _ -> ()) dbName migrationRepoName migrationEntryName
+    let (_, connDeps , actual) = setupTest (fun _ _ -> ()) 
+                                            (updateDatabase migrationEntryName) 
+                                            dbName 
+                                            migrationRepoName
 
     let expected = Ok' "Database is successfully updated"
 
-    let latestFromHistory = executeDbScript <!> targetDbConnString <*> Ok (fun _ -> None) <*> (Ok MigrationHistory.tryFindLatest)
+    let latestFromHistory = executeDbScript connDeps.targetDbConnectionString (fun _ -> None) MigrationHistory.tryFindLatest
 
     test <@ actual = expected @>
-    test <@ latestFromHistory = Ok (MigrationId.parse "20180101110000-SeedPlayer") @>
+    test <@ latestFromHistory = MigrationId.parse "20180101110000-SeedPlayer" @>
 
 [<Fact>]
 let ``Should apply all migration upto the given migration entry`` () =
@@ -121,13 +70,17 @@ let ``Should apply all migration upto the given migration entry`` () =
     let migrationRepoName = "DummyShiftMigrations"
     let migrationEntryName = Some "CreateInventory"
 
-    let (targetDbConnString, actual) = testUpdateDb (fun _ _ -> ()) dbName migrationRepoName migrationEntryName
+    let (_, connDeps , actual) = setupTest (fun _ _ -> ()) 
+                                            (updateDatabase migrationEntryName) 
+                                            dbName 
+                                            migrationRepoName
 
     let expected = Ok' "Database is successfully updated"
 
-    let latestFromHistory = executeDbScript <!> targetDbConnString <*> Ok (fun _ -> None) <*> (Ok MigrationHistory.tryFindLatest)
+    let latestFromHistory = executeDbScript connDeps.targetDbConnectionString (fun _ -> None) MigrationHistory.tryFindLatest
 
-    test <@ latestFromHistory = Ok (MigrationId.parse "20180101080000-CreateInventory") @>
+    test <@ actual = expected @>
+    test <@ latestFromHistory = MigrationId.parse "20180101080000-CreateInventory" @>
 
 [<Fact>]
 let ``Should revert migration down to the given migration entry`` () = 
@@ -135,16 +88,18 @@ let ``Should revert migration down to the given migration entry`` () =
     let migrationRepoName = "DummyShiftMigrations"
     let migrationEntryName = Some "CreateInventory"
 
-    let createDbState connectionString projectDirectory = 
-        executeDbScript connectionString (fun _ -> None) (readScriptFile projectDirectory "TestScript01.sql") 
-
-    let (targetDbConnString, actual) = testUpdateDb createDbState dbName migrationRepoName migrationEntryName
-
+    let createDbState dirDeps = readScriptFile dirDeps.projectDirectory "TestScript01.sql"
+    
+    let (_, connDeps , actual) = setupTest createDbState 
+                                           (updateDatabase migrationEntryName) 
+                                           dbName 
+                                           migrationRepoName
     let expected = Ok' "Database is successfully updated"
 
-    let latestFromHistory = executeDbScript <!> targetDbConnString <*> Ok (fun _ -> None) <*> (Ok MigrationHistory.tryFindLatest)
+    let latestFromHistory = executeDbScript connDeps.targetDbConnectionString (fun _ -> None) MigrationHistory.tryFindLatest
 
-    test <@ latestFromHistory = Ok (MigrationId.parse "20180101080000-CreateInventory") @>
+    test <@ actual = expected @>
+    test <@ latestFromHistory = MigrationId.parse "20180101080000-CreateInventory" @> 
 
 [<Fact>]
 let ``Should apply remaining unapplied migration entries`` () = 
@@ -152,13 +107,16 @@ let ``Should apply remaining unapplied migration entries`` () =
     let migrationRepoName = "DummyShiftMigrations"
     let migrationEntryName = None
 
-    let createDbState connectionString projectDirectory = 
-        executeDbScript connectionString (fun _ -> None) (readScriptFile projectDirectory "TestScript02.sql") 
+    let createDbState dirDeps = readScriptFile dirDeps.projectDirectory "TestScript02.sql"
 
-    let (targetDbConnString, actual) = testUpdateDb createDbState dbName migrationRepoName migrationEntryName
+    let (_, connDeps , actual) = setupTest createDbState 
+                                           (updateDatabase migrationEntryName) 
+                                           dbName 
+                                           migrationRepoName
 
     let expected = Ok' "Database is successfully updated"
 
-    let latestFromHistory = executeDbScript <!> targetDbConnString <*> Ok (fun _ -> None) <*> (Ok MigrationHistory.tryFindLatest)
+    let latestFromHistory = executeDbScript connDeps.targetDbConnectionString (fun _ -> None) MigrationHistory.tryFindLatest
 
-    test <@ latestFromHistory = Ok (MigrationId.parse "20180101110000-SeedPlayer") @>
+    test <@ actual = expected @>
+    test <@ latestFromHistory = MigrationId.parse "20180101110000-SeedPlayer" @>   

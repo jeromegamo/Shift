@@ -41,3 +41,29 @@ module Db =
         con.Open()
         let cmd = con.CreateCommand()
         execute cmd
+
+    type GetDbTransaction = SqlConnection -> SqlTransaction option
+    let executeDbScript : ConnectionString -> GetDbTransaction -> (SqlCommand -> 'r) -> 'r =
+        fun connectionString getTransaction execute ->
+        use connection = new SqlConnection(connectionString)
+        connection.Open()
+        let tx = getTransaction connection
+        let cmd = connection.CreateCommand()
+        match tx with
+        | None ->
+            try execute cmd 
+            with _ -> reraise()
+        | Some tx ->
+            cmd.Transaction <- tx
+            try
+                let result = execute cmd
+                tx.Commit()
+                connection.Close()
+                result
+            with _ -> 
+                tx.Rollback()
+                connection.Close()
+                reraise()
+
+    let getDbTransaction = fun (conn:SqlConnection) -> Some (conn.BeginTransaction())
+    let ignoreDbTransaction = fun _ -> None

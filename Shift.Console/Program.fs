@@ -4,102 +4,99 @@ module Program =
 
     open System
     open System.Reflection
+    open System.IO
+    open System.Data
     open Shift
     open Shift.CommandParser
     open Shift.DirectoryHelper
-    open Shift.CommandHandler
+    open Shift.MigrationRepository
+    open Shift.Command
 
-    let initializeHandler' : ProjectDirectory -> MigrationRepositoryDirectory option -> MigrationRepositoryName -> Result<string, string> =
-        fun projectDirectory migrationRepositoryDirectory migrationRepositoryName ->
-        let (<!>) = Result.map
-        let (<*>) = Result.apply
-        match migrationRepositoryDirectory with
-        | None -> 
-            initializeHandler <!> (Ok projectDirectory) <*> (Ok migrationRepositoryName)
-            |> Result.bind id
-            |> Result.map (fun _ -> "Migration repository folder has been created")
-        | Some _ -> Error "There is an existing migration repository" 
+    let addMigration' : AddMigration =
+        let getTimeStamp = fun unit -> DateTime.UtcNow
+        Command.addMigration getTimeStamp
+                                MigrationRepository.createMigrationEntry
+    let updateDatabaseSetup : IDbCommand -> MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string> =
+        fun dbcmd migrationRepositoryDirectory migrationEntryName ->
 
-    let addMigrationHandler' : ProjectDirectory -> MigrationRepositoryDirectory option -> MigrationEntryName -> Result<string, string> =
-        fun projectDirectory migrationRepositoryDirectory migrationEntryName ->
-        let (<!>) = Result.map
-        let (<*>) = Result.apply
-        match migrationRepositoryDirectory with
-        | None -> Error "No migration repository exists"
-        | Some dir ->
-            let timestamp = DateTime.UtcNow 
-            addMigrationHandler <!> (Ok timestamp) <*> (Ok dir) <*> (Ok migrationEntryName)
-            |> Result.bind id
-            |> function
-            | Ok o -> Ok "Migration entry is created"
-            | Error (MigrationIdError Required) -> Error "Migration name is required"
-            | Error (MigrationIdError MaxLength) -> Error "Migration name is too long"
-            | Error (MigrationIdError MinLength) -> Error "Migration name is too short"
+        let migrationHistoryDeps =
+            { ensureHistoryTable = fun _ -> MigrationHistory.ensureMigrationHistoryTable dbcmd 
+              tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
+        let migrationRepositoryDeps = 
+            { tryFindByName = MigrationRepository.tryFindByName
+              tryFindLatest = MigrationRepository.tryFindLatest
+              getUpFilesByRange =  MigrationRepository.getUpFilesByRange
+              getDownFilesByRange = MigrationRepository.getDownFilesByRange
+              getUpFilesUntil = MigrationRepository.getUpFilesUntil }
+        
+        let executeMigrationScripts = Command.executeMigrationScripts dbcmd
 
-    let updateCommandHandler' : ProjectDirectory -> MigrationRepositoryDirectory option -> MigrationEntryName option -> Result<string, string> =
-        fun projectDirectory migrationRepositoryDirectory migrationEntryName -> 
-        match migrationRepositoryDirectory with
-        | None -> Error "No migration repository exists"
-        | Some migrationRepositoryDirectory ->
-            let (<!>) = Result.map
-            let (<*>) = Result.apply
-            let connectionString = Common.getConnectionString projectDirectory
-                                   |> Option.asResult "Cannot find connection string"
-            UpdateHandler.updateController <!> connectionString <*> (Ok migrationRepositoryDirectory) <*> (Ok migrationEntryName)
-            |> function
-            | Error e -> Error e
-            | Ok o -> 
-                match o with
-                | Ok _ -> Ok "Database Updated"
-                | Error NoMigrationEntries -> Error "No migration entries"
-                | Error MissingMigrationEntries -> Error "Missing migration entries"
-                | Error AlreadyUpToDate -> Error "Already up to date"
+        Command.updateDatabase 
+            migrationHistoryDeps
+            migrationRepositoryDeps
+            executeMigrationScripts
+            migrationRepositoryDirectory
+            migrationEntryName
 
-    let removeMigrationHandler : ConnectionString -> ProjectDirectory -> MigrationRepositoryDirectory option -> Result<string, string> =
-        fun connectionString projectDirectory migrationRepositoryDirectory ->
-        match migrationRepositoryDirectory with
-        | None -> Error "No migration repository exists"
-        | Some migrationRepositoryDirectory ->
-            let migrationId = MigrationRepository.tryFindLatest migrationRepositoryDirectory
-            match migrationId with
-            | None -> Error "No Migration files exists"
-            | Some mId ->
-                let (<!>) = Result.map
-                let (<*>) = Result.apply
-                let isMigrationApplied' = Db.runTransactional 
-                                        <!> (Ok connectionString)
-                                        <*> (Ok (fun dbcmd -> 
-                                                    MigrationHistory.ensureMigrationHistoryTable dbcmd
-                                                    MigrationHistory.isMigrationApplied dbcmd mId))
-                match isMigrationApplied' with
-                | Error e -> Error e
-                | Ok isApplied ->
-                    if isApplied then Error "Migration entry is currently applied"
-                    else MigrationRepository.deleteById migrationRepositoryDirectory mId
-                         Ok "Migration entry removed"
+    let removeMigrationSetup : IDbCommand -> MigrationRepositoryDirectory -> Result<string, string> =
+        fun dbcmd migrationRepositoryDirectory ->
 
-    let run = 
-        let (<!>) = Result.map
-        let (<*>) = Result.apply
+        Command.remove MigrationRepository.tryFindLatest
+                       (MigrationHistory.isMigrationApplied dbcmd)
+                       MigrationRepository.deleteById
+                       migrationRepositoryDirectory
+
+    let getProcessDeps : InitializeMigration 
+                      -> AddMigration 
+                      -> UpdateDatabase 
+                      -> RemoveMigration 
+                      -> ProcessCommandDeps =
+        fun initializeMigration addMigration updateDatabase removeMigration -> 
+        { initializeMigration = initializeMigration
+          addMigration = addMigration
+          updateDatabase = updateDatabase
+          removeMigration = removeMigration  }
+
+    let (<!>) = Result.map
+    let (<*>) = Result.apply
+
+    let run = fun _ ->
+        let parsedCommand = Console.ReadLine()
+                            |> CommandParser.parseCommand
         let migrationRepositoryName = "ShiftMigrations"
         let name = DirectoryHelper.getProjectName()
         let projectDirectory = DirectoryHelper.getProjectDirectory name
-                            |> Option.asResult "Project directory does not exist"
-        let parsedCommand = Console.ReadLine()
-                            |> CommandParser.parseCommand
+                               |> Option.asResult "Project directory does not exist"
         let migrationRepositoryState = getMigrationRepositoryState 
                                     <!> (Ok Directory.Exists) 
                                     <*> (Ok migrationRepositoryName)
                                     <*> projectDirectory
-        let result = processCommand 
-                    <!> (Ok initializeMigration)
-                    <*> migrationRepositoryState 
-                    <*> parsedCommand
-                    |> Result.bind id
-
-        match result with
-        | Error e -> printfn "%A" e
-        | Ok o -> printfn "%A" o
+        let connectionString = getConnectionString <!> projectDirectory
+                               |> Result.bind (fun conn -> 
+                                    match conn with 
+                                    | None -> Error "Connection string does not exist"
+                                    | Some a -> Ok a)
+        let updateDatabase' = Db.executeDbScript 
+                                <!> connectionString 
+                                <*> (Ok Db.getDbTransaction) 
+                                <*> (Ok updateDatabaseSetup)
+        let removeMigration' = Db.executeDbScript 
+                                <!> connectionString 
+                                <*> (Ok Db.getDbTransaction) 
+                                <*> (Ok removeMigrationSetup)
+        let processCommandDeps = getProcessDeps 
+                                   <!> (Ok Command.initializeMigration)
+                                   <*> (Ok addMigration')
+                                   <*> updateDatabase'
+                                   <*> removeMigration'
+        Command.processCommand 
+            <!> processCommandDeps
+            <*> migrationRepositoryState
+            <*> parsedCommand
+            |> Result.bind id
+            |> function
+            | Ok o -> printfn "%s" o
+            | Error e -> printfn "%s" e
 
     [<EntryPoint>]
     let main argv =

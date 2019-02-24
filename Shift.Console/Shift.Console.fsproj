@@ -5,15 +5,8 @@
     <TargetFramework>netcoreapp2.2</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="InitTest.fsx" />
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="UpdateHandler.fs" />
     <Compile Include="Program.fs" />
     <ProjectReference Include="..\Shift\Shift.fsproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="Script.fsx" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>
