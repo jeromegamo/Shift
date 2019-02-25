@@ -28,8 +28,7 @@ let readScriptFile : ProjectDirectory -> FileName -> IDbCommand -> unit =
 let updateDatabase : MigrationEntryName option -> DirectoryDependencies -> IDbCommand -> Result<string, string> =
     fun migrationEntryName dir dbcmd -> 
     let historyDeps = 
-        { ensureHistoryTable = fun _ -> MigrationHistory.ensureMigrationHistoryTable dbcmd
-          tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
+        { tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
     let repositoryDeps =
             { tryFindByName = MigrationRepository.tryFindByName 
               tryFindLatest = MigrationRepository.tryFindLatest

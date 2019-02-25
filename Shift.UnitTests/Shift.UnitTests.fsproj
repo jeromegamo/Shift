@@ -9,6 +9,7 @@
     <Compile Include="UpdateDatabaseTests.fs" />
     <Compile Include="MigrationIdTests.fs" />
     <Compile Include="CommandParserTests.fs" />
+    <Compile Include="CommandProcessingTest.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

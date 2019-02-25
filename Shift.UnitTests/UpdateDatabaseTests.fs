@@ -11,8 +11,7 @@ module UpdateTests =
     let migrationRepositoryDirectory = { ProjectDirectory.Name = ""
                                          FullPath = ""}
     let historyDeps = 
-        { ensureHistoryTable = fun _ -> ()
-          tryFindLatest = fun _ -> None }
+        { tryFindLatest = fun _ -> None }
     let repositoryDeps =
             { tryFindByName = fun _ _ -> None 
               tryFindLatest = fun _ -> None 

@@ -127,8 +127,7 @@ module Command =
         cmd.ExecuteNonQuery() |> ignore
 
     type MigrationHistoryDeps = 
-        { ensureHistoryTable : unit -> unit 
-          tryFindLatest : unit -> MigrationId option }
+        { tryFindLatest : unit -> MigrationId option }
     type MigrationRepositoryDeps =
         { tryFindByName : MigrationRepositoryDirectory -> MigrationEntryName ->  MigrationId option 
           tryFindLatest : MigrationRepositoryDirectory -> MigrationId option 
@@ -139,6 +138,13 @@ module Command =
     type ExecuteMigrationScripts = MigrationFile seq * DbScriptAction -> unit
     type GetMigrationFiles = MigrationRepositoryDirectory -> DbUpdateAction -> MigrationFile seq 
 
+    let private getMigrationFiles : MigrationRepositoryDeps -> MigrationRepositoryDirectory -> DbUpdateAction -> (MigrationFile seq * DbScriptAction) = 
+        fun migrationRepository migrationRepositoryDirectory cmd ->
+        match cmd with
+        | (Update(from, upto)) -> (migrationRepository.getUpFilesByRange migrationRepositoryDirectory from upto, InsertIds)
+        | (Revert(from, upto)) -> (migrationRepository.getDownFilesByRange migrationRepositoryDirectory upto from, DeleteIds)
+        | (UpdateFromFirst(target)) -> (migrationRepository.getUpFilesUntil migrationRepositoryDirectory target, InsertIds)
+
     let updateDatabase : MigrationHistoryDeps
                       -> MigrationRepositoryDeps
                       -> ExecuteMigrationScripts 
@@ -146,7 +152,6 @@ module Command =
         fun migrationHistory migrationRepository executeMigrationScripts migrationRepositoryDirectory entryName -> 
         let (<!>) = Option.map
         let (<*>) = Option.apply
-        do migrationHistory.ensureHistoryTable()
         let latestIdFromHistory = migrationHistory.tryFindLatest()
         let latestIdFromRepository = migrationRepository.tryFindLatest migrationRepositoryDirectory
         let targetMigrationId = migrationRepository.tryFindByName 
@@ -154,14 +159,8 @@ module Command =
                                 <*> entryName
                                 |> Option.bind id
 
-        let getMigrationFiles (cmd:DbUpdateAction) = 
-            match cmd with
-            | (Update(from, upto)) -> (migrationRepository.getUpFilesByRange migrationRepositoryDirectory from upto, InsertIds)
-            | (Revert(from, upto)) -> (migrationRepository.getDownFilesByRange migrationRepositoryDirectory upto from, DeleteIds)
-            | (UpdateFromFirst(target)) -> (migrationRepository.getUpFilesUntil migrationRepositoryDirectory target, InsertIds)
-
         getDbUpdateAction latestIdFromHistory latestIdFromRepository targetMigrationId 
-        |> Result.map getMigrationFiles
+        |> Result.map (getMigrationFiles migrationRepository migrationRepositoryDirectory)
         |> Result.map (executeMigrationScripts)
         |> Result.map (fun _ -> "Database is successfully updated")
 
@@ -191,21 +190,36 @@ module Command =
 
     type ProcessCommandDeps = { initializeMigration : InitializeMigration
                                 addMigration : AddMigration
-                                updateDatabase : UpdateDatabase
-                                removeMigration : RemoveMigration }
+                                updateDatabase : ConnectionString -> UpdateDatabase
+                                removeMigration : ConnectionString -> RemoveMigration }
 
-    let processCommand : ProcessCommandDeps
+    type GetConnectionString = unit -> ConnectionString option
+    type EnsureMigrationHistoryTable = ConnectionString -> unit
+
+    let processCommand : GetConnectionString 
+                      -> ProcessCommandDeps
+                      -> EnsureMigrationHistoryTable
                       -> MigrationRepositoryState 
-                      -> ParsedCommand
+                      -> ParsedCommand 
                       -> Result<string, string> =
-        fun command migrationRepositoryState parsedCommand ->
+        fun getConnectionString command ensureMigrationHistoryTable
+            migrationRepositoryState parsedCommand ->
+        let (<!>) = Result.map
+        let (<*>) = Result.apply
         match parsedCommand, migrationRepositoryState with 
         | InitCommand, Exist _ -> Error "A repository already exists"
         | InitCommand, DoesNotExist repository -> command.initializeMigration repository
-        | _, DoesNotExist _ -> Error "Migration repository does not exist"
-        | _, Exist repository ->
-            match parsedCommand with
-            | AddCommand entryName -> command.addMigration repository entryName
-            | UpdateCommand entryName -> command.updateDatabase repository entryName
-            | RemoveCommand -> command.removeMigration repository
-            | _ -> failwith "Command cannot be processed"
+        | _ , DoesNotExist _ -> Error "Migration repository does not exist"
+        | AddCommand entryName , Exist repository -> command.addMigration repository entryName
+        | _ , Exist repository ->
+            let connectionString = getConnectionString()
+                                |> Option.asResult "Cannot find connection string"
+            ensureMigrationHistoryTable <!> connectionString |> ignore
+
+            match parsedCommand with 
+            | UpdateCommand entryName -> 
+                command.updateDatabase <!> connectionString <*> (Ok repository) <*> (Ok entryName)
+                |> Result.bind id
+            | RemoveCommand -> command.removeMigration <!> connectionString <*> (Ok repository)
+                            |> Result.bind id
+            | _ -> failwith "Cannot process command"

@@ -8,42 +8,6 @@ open Swensen.Unquote
 open Shift
 open Shift.IntegrationTests.TestHelpers
 
-
-// let testSetup (executeScriptsBeforeSUT: ConnectionString -> unit)
-//                 (dbName:string) 
-//                 (migrationRepoName:string) =
-//     let name = DirectoryHelper.getProjectName()
-//     let projectDirectory = DirectoryHelper.getProjectDirectory name 
-//     let connectionString = projectDirectory |> Option.bind getConnectionString
-//     let migrationRepositoryDirectory = 
-//         projectDirectory 
-//         |> Option.map appendTempFolder
-//         |> Option.map (appendMigrationRepoDir migrationRepoName)
-//     let (<!>) = Option.map
-//     let (<*>) = Option.apply
-//     Db.runNonTransactional <!> connectionString <*> Some (dbSetup dbName) |> ignore
-
-//     //Original DummyMigrationFiles Directory
-//     let source = projectDirectory
-//                 |> Option.map (fun dir -> Path.Combine(dir.FullPath, "DummyShiftMigrations"))
-//                 |> Option.map (fun path -> DirectoryInfo path)
-//     //isolated temp folder per test
-//     let destination = migrationRepositoryDirectory |> Option.map (fun dir -> DirectoryInfo dir.FullPath)
-//     //create a copy of the original migration files per test
-//     copy <!> source <*> destination |> ignore
-
-//     let targetDbConnString = connectionString |> Option.map (TestHelpers.replaceDbName dbName)
-
-//     executeScriptsBeforeSUT <!> targetDbConnString |> ignore
-
-//     let projectDirectory' = projectDirectory |> Option.asResult "Project directory not found"
-
-//     let targetDbConnString' = targetDbConnString |> Option.asResult "Connection string not found"
-//     let (<!>) = Result.map
-//     let (<*>) = Result.apply
-//     let actual = removeMigrationHandler <!> targetDbConnString' <*> projectDirectory' <*> (Ok migrationRepositoryDirectory) 
-//                  |> Result.bind id
-//     (actual, targetDbConnString)
 let removeMigration : DirectoryDependencies -> IDbCommand -> Result<string, string> =
     fun dirDeps dbcmd ->
 

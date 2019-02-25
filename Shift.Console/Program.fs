@@ -16,40 +16,53 @@ module Program =
         let getTimeStamp = fun unit -> DateTime.UtcNow
         Command.addMigration getTimeStamp
                                 MigrationRepository.createMigrationEntry
-    let updateDatabaseSetup : IDbCommand -> MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string> =
-        fun dbcmd migrationRepositoryDirectory migrationEntryName ->
+    let updateDatabase' : ConnectionString -> MigrationRepositoryDirectory -> MigrationEntryName option -> Result<string, string> =
+        fun connectionString migrationRepositoryDirectory migrationEntryName ->
 
-        let migrationHistoryDeps =
-            { ensureHistoryTable = fun _ -> MigrationHistory.ensureMigrationHistoryTable dbcmd 
-              tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
-        let migrationRepositoryDeps = 
-            { tryFindByName = MigrationRepository.tryFindByName
-              tryFindLatest = MigrationRepository.tryFindLatest
-              getUpFilesByRange =  MigrationRepository.getUpFilesByRange
-              getDownFilesByRange = MigrationRepository.getDownFilesByRange
-              getUpFilesUntil = MigrationRepository.getUpFilesUntil }
-        
-        let executeMigrationScripts = Command.executeMigrationScripts dbcmd
+        let transaction = fun dbcmd ->
+            let migrationHistoryDeps =
+                { tryFindLatest = fun _ -> MigrationHistory.tryFindLatest dbcmd }
+            let migrationRepositoryDeps = 
+                { tryFindByName = MigrationRepository.tryFindByName
+                  tryFindLatest = MigrationRepository.tryFindLatest
+                  getUpFilesByRange =  MigrationRepository.getUpFilesByRange
+                  getDownFilesByRange = MigrationRepository.getDownFilesByRange
+                  getUpFilesUntil = MigrationRepository.getUpFilesUntil }
+            
+            let executeMigrationScripts = Command.executeMigrationScripts dbcmd
 
-        Command.updateDatabase 
-            migrationHistoryDeps
-            migrationRepositoryDeps
-            executeMigrationScripts
-            migrationRepositoryDirectory
-            migrationEntryName
+            Command.updateDatabase 
+                migrationHistoryDeps
+                migrationRepositoryDeps
+                executeMigrationScripts
+                migrationRepositoryDirectory
+                migrationEntryName
 
-    let removeMigrationSetup : IDbCommand -> MigrationRepositoryDirectory -> Result<string, string> =
-        fun dbcmd migrationRepositoryDirectory ->
+        Db.executeDbScript connectionString Db.getDbTransaction transaction
 
-        Command.remove MigrationRepository.tryFindLatest
-                       (MigrationHistory.isMigrationApplied dbcmd)
-                       MigrationRepository.deleteById
-                       migrationRepositoryDirectory
+    let removeMigration' : ConnectionString -> MigrationRepositoryDirectory -> Result<string, string> =
+        fun connectionString migrationRepositoryDirectory ->
+
+        let transaction = fun dbcmd ->
+            Command.remove MigrationRepository.tryFindLatest
+                           (MigrationHistory.isMigrationApplied dbcmd)
+                           MigrationRepository.deleteById
+                           migrationRepositoryDirectory
+
+        Db.executeDbScript connectionString Db.getDbTransaction transaction
+
+    let getConnectionString' : ProjectDirectory -> unit -> ConnectionString option =
+        fun projectDirectory _ ->
+        Common.getConnectionString projectDirectory
+
+    let ensureMigrationHistoryTable' : ConnectionString -> unit =
+        fun connectionString ->
+        Db.executeDbScript connectionString Db.getDbTransaction MigrationHistory.ensureMigrationHistoryTable
 
     let getProcessDeps : InitializeMigration 
                       -> AddMigration 
-                      -> UpdateDatabase 
-                      -> RemoveMigration 
+                      -> (ConnectionString -> UpdateDatabase)
+                      -> (ConnectionString -> RemoveMigration)
                       -> ProcessCommandDeps =
         fun initializeMigration addMigration updateDatabase removeMigration -> 
         { initializeMigration = initializeMigration
@@ -61,42 +74,35 @@ module Program =
     let (<*>) = Result.apply
 
     let run = fun _ ->
-        let parsedCommand = Console.ReadLine()
-                            |> CommandParser.parseCommand
-        let migrationRepositoryName = "ShiftMigrations"
-        let name = DirectoryHelper.getProjectName()
-        let projectDirectory = DirectoryHelper.getProjectDirectory name
-                               |> Option.asResult "Project directory does not exist"
-        let migrationRepositoryState = getMigrationRepositoryState 
-                                    <!> (Ok Directory.Exists) 
-                                    <*> (Ok migrationRepositoryName)
-                                    <*> projectDirectory
-        let connectionString = getConnectionString <!> projectDirectory
-                               |> Result.bind (fun conn -> 
-                                    match conn with 
-                                    | None -> Error "Connection string does not exist"
-                                    | Some a -> Ok a)
-        let updateDatabase' = Db.executeDbScript 
-                                <!> connectionString 
-                                <*> (Ok Db.getDbTransaction) 
-                                <*> (Ok updateDatabaseSetup)
-        let removeMigration' = Db.executeDbScript 
-                                <!> connectionString 
-                                <*> (Ok Db.getDbTransaction) 
-                                <*> (Ok removeMigrationSetup)
-        let processCommandDeps = getProcessDeps 
-                                   <!> (Ok Command.initializeMigration)
-                                   <*> (Ok addMigration')
-                                   <*> updateDatabase'
-                                   <*> removeMigration'
-        Command.processCommand 
-            <!> processCommandDeps
-            <*> migrationRepositoryState
-            <*> parsedCommand
-            |> Result.bind id
-            |> function
-            | Ok o -> printfn "%s" o
-            | Error e -> printfn "%s" e
+        Console.ReadLine()
+        |> CommandParser.parseCommand
+        |> function
+        | Error e -> printfn "%s" e
+        | Ok parsedCommand ->
+            let migrationRepositoryName = "ShiftMigrations"
+            let name = DirectoryHelper.getProjectName()
+            let projectDirectory = DirectoryHelper.getProjectDirectory name
+                                |> Option.asResult "Project directory does not exist"
+            let migrationRepositoryState = getMigrationRepositoryState 
+                                        <!> (Ok Directory.Exists) 
+                                        <*> (Ok migrationRepositoryName)
+                                        <*> projectDirectory
+            let connectionString = getConnectionString' <!> projectDirectory
+            let processCommandDeps = getProcessDeps 
+                                    <!> (Ok Command.initializeMigration)
+                                    <*> (Ok addMigration')
+                                    <*> (Ok updateDatabase')
+                                    <*> (Ok removeMigration')
+            Command.processCommand 
+                <!> connectionString
+                <*> processCommandDeps
+                <*> (Ok ensureMigrationHistoryTable')
+                <*> migrationRepositoryState
+                <*> (Ok parsedCommand)
+                |> Result.bind id
+                |> function
+                | Ok o -> printfn "%s" o
+                | Error e -> printfn "%s" e
 
     [<EntryPoint>]
     let main argv =
