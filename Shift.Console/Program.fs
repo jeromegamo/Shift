@@ -53,7 +53,7 @@ module Program =
 
     let getConnectionString' : ProjectDirectory -> unit -> ConnectionString option =
         fun projectDirectory _ ->
-        Common.getConnectionString projectDirectory
+        Db.getConnectionString projectDirectory
 
     let ensureMigrationHistoryTable' : ConnectionString -> unit =
         fun connectionString ->

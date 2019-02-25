@@ -1,18 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="LanguageExtensions.fs" />
-    <Compile Include="Common.fs" />
-    <Compile Include="Db.fs" />
-    <Compile Include="MigrationId.fs" />
-    <Compile Include="DirectoryHelper.fs" />
-    <Compile Include="MigrationHistory.fs" />
-    <Compile Include="MigrationRepository.fs" />
-    <Compile Include="CommandParser.fs" />
-    <Compile Include="Command.fs" />
-  </ItemGroup>
-  <Import Project="..\.paket\Paket.Restore.targets" />
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="LanguageExtensions.fs" />
+        <Compile Include="Common.fs" />
+        <Compile Include="Db.fs" />
+        <Compile Include="MigrationId.fs" />
+        <Compile Include="DirectoryHelper.fs" />
+        <Compile Include="MigrationHistory.fs" />
+        <Compile Include="MigrationRepository.fs" />
+        <Compile Include="CommandParser.fs" />
+        <Compile Include="Command.fs" />
+    </ItemGroup>
+    <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

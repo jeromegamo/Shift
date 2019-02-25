@@ -1,12 +1,15 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="Program.fs" />
-    <ProjectReference Include="..\Shift\Shift.fsproj" />
-  </ItemGroup>
-  <Import Project="..\.paket\Paket.Restore.targets" />
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>shift</ToolCommandName>
+        <PackageOutputPath>./nupkg</PackageOutputPath>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="Program.fs" />
+        <ProjectReference Include="..\Shift\Shift.fsproj" />
+    </ItemGroup>
+    <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

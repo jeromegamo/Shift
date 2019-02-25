@@ -2,6 +2,7 @@ namespace Shift
 
 open System.Data
 open System.Data.SqlClient
+open Microsoft.Extensions.Configuration
 open Shift
 
 [<AutoOpen>]
@@ -9,6 +10,16 @@ module Db =
 
     type RawScript = string
     type ConnectionString = string
+
+    let getConnectionString : ProjectDirectory -> string option =
+        fun projectDirectory ->
+        let builder = ConfigurationBuilder()
+                        .SetBasePath(projectDirectory.FullPath)
+                        .AddJsonFile("appsettings.json", optional = true, reloadOnChange = true)
+        let configuration = builder.Build()
+        let connectionString = configuration.GetConnectionString("appDbConnection")
+        if connectionString = null then None
+        else Some connectionString
 
     let executeNonQuery : IDbCommand -> RawScript -> unit =
         fun cmd script ->
@@ -20,27 +31,6 @@ module Db =
         match cmd.ExecuteScalar() with
         | :? 'a as value -> Some value
         | _ -> None
-
-    let runTransactional : ConnectionString ->  (IDbCommand -> 'a)  -> 'a=
-        fun connectionString execute ->
-        use con = new SqlConnection(connectionString)
-        con.Open()
-        let tx = con.BeginTransaction()
-        let cmd = con.CreateCommand()
-        cmd.Transaction <- tx
-        try 
-            let result = execute cmd
-            tx.Commit()
-            result
-        with _ -> tx.Rollback()
-                  reraise()
-
-    let runNonTransactional : ConnectionString ->  (IDbCommand -> 'a)  -> 'a =
-        fun connectionString execute ->
-        use con = new SqlConnection(connectionString)
-        con.Open()
-        let cmd = con.CreateCommand()
-        execute cmd
 
     type GetDbTransaction = SqlConnection -> SqlTransaction option
     let executeDbScript : ConnectionString -> GetDbTransaction -> (SqlCommand -> 'r) -> 'r =
